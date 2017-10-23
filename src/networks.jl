@@ -1,4 +1,4 @@
-export adjnodes, adjnzval
+export adjnodes, adjnzval, degree, dependency, expci
 
 """ degree vector of an adjacency graph """
 degree(G::SparseMatrixCSC) = vec(full(sum(G,1)))

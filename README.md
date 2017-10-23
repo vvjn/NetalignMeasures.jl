@@ -6,4 +6,5 @@
 
 [![codecov.io](http://codecov.io/github/vvjn/NetalignMeasures.jl/coverage.svg?branch=master)](http://codecov.io/github/vvjn/NetalignMeasures.jl?branch=master)
 
-Network alignment measures including S3, DS3, WEC, DWEC.
+Network alignment measures including S3, DS3, WEC, DWEC. Node similarities for
+network alignment including GDV similarity, degree similarity, etc.

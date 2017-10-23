@@ -55,5 +55,6 @@ include("mergesorted.jl")
 include("networks.jl")
 include("dynamicnetworks.jl")
 include("measures.jl")
+include("nodemeasures.jl")
 
 end
