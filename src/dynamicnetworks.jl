@@ -1,4 +1,5 @@
-export Events, networkactivity, nodeactivity, cet_ncet, fixevents
+export Events, networkactivity, nodeactivity, cet_ncet, fixevents,
+fixevents!, widenevents!, snapshot, snapshots, mintime, maxtime
 
 # Functions for working with dynamic networks
 import Base: zero, ==
@@ -31,11 +32,6 @@ zero(::Type{Events}) = Events()
 nodeactivity(evs::Events) = sum(x -> x[2]-x[1], evs.timestamps)
 
 """
-Sum of active duration over all events in G
-"""
-networkactivity(G::SparseMatrixCSC{Events}) = sum(nodeactivity, G.nzval)
-
-"""
 Input: adj. matrix of a dynamic network
 Output: adj. matrix of static network containing corresponding
  duration of each edge in the dynamic network
@@ -43,6 +39,80 @@ Output: adj. matrix of static network containing corresponding
 nodeactivity(G::SparseMatrixCSC{Events}) =
     SparseMatrixCSC(G.m,G.n,copy(G.colptr),copy(G.rowval),
                     map(nodeactivity, G.nzval))
+
+"""
+Sum of active duration over all events in G
+"""
+networkactivity(G::SparseMatrixCSC{Events}) = sum(nodeactivity, G.nzval)
+
+function mintime(G::SparseMatrixCSC{Events})
+    t_min = Inf
+    for events in G.nzval, x in events
+        t_min = min(t_min,x[1])
+    end
+    t_min
+end
+function maxtime(G::SparseMatrixCSC{Events})
+    t_max = -Inf
+    for events in G.nzval, x in events
+        t_max = max(t_max,x[2])
+    end
+    t_max
+end
+
+"""
+    If event intersects with [t_s,t_e] then add edges to snapshot
+"""        
+function snapshot(G::SparseMatrixCSC{Events},t_s::Real,t_e::Real)
+    m,n = size(G)
+    I = Int[]
+    J = Int[]
+    for col = 1:n
+        for j = nzrange(G,col)
+            row = G.rowval[j]
+            events = G.nzval[j]
+            Tc,Tn = conserved_duration(events,[(t_s,t_e)])
+            if Tc > 0
+                push!(I,row)
+                push!(J,col)
+            end
+        end
+    end
+    sparse(I,J,1,m,n)
+end
+
+""" Convert to snapshots with window size t_w
+"""    
+function snapshots(G::SparseMatrixCSC{Events},t_w::Real,
+                   t_min::Real=-Inf,t_max::Real=Inf)
+    if isinf(t_min)
+        t_min = mintime(G)
+    end
+    if isinf(t_max)
+        t_max = maxtime(G)
+    end
+    map(t -> snapshot(G,t,t+t_w), t_min:t_w:t_max)
+end
+
+"""
+Make each event in network wider by adding making each event
+occur `pre` time ahead and `post` time later
+"""    
+function widenevents!(G::SparseMatrixCSC{Events},pre=0.5,post=0.5)
+    m,n = size(G)
+    for i = 1:n
+        for j = nzrange(G,i)
+            row = G.rowval[j]
+            events = G.nzval[j]
+            for k = 1:length(events)
+                x = events[k]
+                events[k] = (x[1]-pre,x[2]+post)
+            end
+            fixevents!(G.nzval[j])
+        end
+    end
+    G
+end
 
 """
 Given a vector of timestamps (sorted wrt the start time),

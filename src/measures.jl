@@ -3,8 +3,11 @@ ConvexCombMeasure, ConvexCombScore,
 NodeSimMeasure, NodeSimScore,
 S3Measure, S3Score, DS3Measure, DS3Score,
 WECMeasure, WECScore, DWECMeasure, DWECScore,
-NetalMeasure, NetalScore, NullMeasure, NullScore,
-GDVSMeasure, HgraalGDVSMeasure, LgraalGDVSMeasure, PCAGDVSMeasure
+NetalMeasure, NetalScore, NullMeasure, NullScore
+
+using MatrixNetworks
+using Distances
+using MultivariateStats
 
 """
 Null measure
@@ -325,9 +328,6 @@ function NodeSimMeasure(::Val{:hgraalgdvs}, G1::SparseMatrixCSC,G2::SparseMatrix
     NodeSimMeasure(S)
 end
 
-using Distances
-using MultivariateStats
-
 "The GDV similarity normalized using PCA from Yuriy's dynamic graphlets paper"
 function NodeSimMeasure(::Val{:pcagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
     X = hcat(gdv1',gdv2') # switch to make columns feature vectors
@@ -336,8 +336,78 @@ function NodeSimMeasure(::Val{:pcagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatr
     X .-= mean(X,2)
     X ./= std(X,2) # standardize
     res = fit(PCA,X; pratio=0.99, mean=0)
-    Y = sqrt.(res.prinvars + 1e-8) .\ res.proj' * X # project and whiten
-    
+    Y = sqrt.(res.prinvars + 1e-8) .\ res.proj' * X # project and whiten    
     R = 1 - pairwise(CosineDist(), Y[:,1:size(gdv1,1)], Y[:,1+size(gdv1,1):end]) / 2
     NodeSimMeasure(R)
+end
+
+"Relative similarity between v1 and v2"
+function NodeSimMeasure(::Val{:relative}, v1::AbstractVector,v2::AbstractVector)
+    m = length(v1)
+    n = length(v2)
+    S = zeros(Float64,m,n)
+    for i = 1:m, j = 1:n
+        S[i,j] = 1 - abs(v1[i] - v2[j])/max(v1[i],v2[j])
+    end
+    NodeSimMeasure(S)
+end
+
+"Degree similarity"
+NodeSimMeasure(::Val{:degree}, G1::SparseMatrixCSC,G2::SparseMatrixCSC) =
+    NodeSimMeasure(:relative, vec(sum(G1,1)), vec(sum(G2,1)))
+
+"Relative clustering coefficient"
+NodeSimMeasure(::Val{:clustering}, G1::SparseMatrixCSC,G2::SparseMatrixCSC) =
+    NodeSimMeasure(:relative, clustercoeffs(G1), clustercoeffs(G2))
+
+"Eccentricity similarity"
+function NodeSimMeasure(::Val{:eccentricity}, G1::SparseMatrixCSC,
+                        G2::SparseMatrixCSC)
+    D1 = hcat(map(i->dijkstra(G1,i)[1],1:size(G1,1))...)
+    D2 = hcat(map(i->dijkstra(G2,i)[1],1:size(G2,1))...)
+    NodeSimMeasure(:relative, maximum(D1,1), maximum(D2,1))
+end
+
+"Performs the migraal confidence transform"
+function NodeSimMeasure(::Val{:migraal}, Xs::AbstractMatrix...)
+    C = zeros(Float64,size(Xs[1]))
+    for X in Xs
+        for i = 1:size(X,1)
+            for j = 1:size(X,2)
+                sless = 0
+                for k = 1:size(X,2)
+                    sless += Int(X[i,k] < X[i,j])
+                end
+                C[i,j] = sless/size(X,2)
+            end
+        end
+    end
+    C ./= length(Xs)
+    NodeSimMeasure(C)
+end
+
+"Transforms blast e-values to nodes similarities"
+function NodeSimMeasure(::Val{:evalues}, E::AbstractMatrix, clamp=1e-101)
+    # -log(e-value) transform
+    B = -log.(E)
+    # If -log(E-value) above -log(clampval), ie if E-value below clampval,
+    # then clamp it
+    # Otherwise we get issues with -log(E-value) being Inf or some
+    # ridiculously huge number
+    clamp!(B, 0, -log(clampval))
+    # Normalize by dividing by maximum value
+    B ./= maximum(B)
+    NodeSimMeasure(B)    
+end
+
+"Transforms blast e-values to node similarities"
+function NodeSimMeasure(::Val{:evalues}, E::SparseMatrixCSC, clamp=1e-101)
+    B = copy(E)
+    # Assume structural sparsity, ie if B[i,j] is not in the structural non-zeros
+    # of B, then there is no given E-value between i and j
+    # But if B[i,j] is, then take the -log(E-value) and clamp the result
+    @. B.nzval = -log(B.nzval) 
+    clamp!(B, 0, -log(clampval))
+    B.nzval ./= maximum(B)
+    NodeSimMeasure(B)
 end
