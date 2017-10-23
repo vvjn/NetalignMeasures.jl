@@ -3,7 +3,8 @@ ConvexCombMeasure, ConvexCombScore,
 NodeSimMeasure, NodeSimScore,
 S3Measure, S3Score, DS3Measure, DS3Score,
 WECMeasure, WECScore, DWECMeasure, DWECScore,
-NetalMeasure, NetalScore, NullMeasure, NullScore
+NetalMeasure, NetalScore, NullMeasure, NullScore,
+GDVSMeasure, HgraalGDVSMeasure, LgraalGDVSMeasure, PCAGDVSMeasure
 
 """
 Null measure
@@ -43,11 +44,13 @@ end
 ConvexCombMeasure(S::A,T::B,alpha::Float64) where {A<:NetalignMeasure,B<:NetalignMeasure} =
     ConvexCombMeasure{A,B}(S,T,alpha)
 
-immutable ConvexCombScore <: NetalignScore
-    s :: Float64
-    t :: Float64
+immutable ConvexCombScore{A<:NetalignScore,B<:NetalignScore} <: NetalignScore
+    s :: A
+    t :: B
     score :: Float64
 end
+ConvexCombScore(s::A,t::B) where {A<:NetalignScore,B<:NetalignScore} =
+    ConvexCombScore{A,B}(s,t)
 
 function measure(m::ConvexCombMeasure,f::Vector{Int})
     a = measure(m.S,f)
@@ -276,3 +279,65 @@ end
 dim(m::NetalMeasure,d::Int) =
     d==1 ? size(m.G1,1) : d==2 ? size(m.G2,1) : error("d")
 dim(m::NetalMeasure) = dim(m,2)
+
+NodeSimMeasure(sym, args...) =  NodeSimMeasure(Val{sym}(), args...)
+
+"GDV similarity, from the original paper"
+function NodeSimMeasure(::Val{:gdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
+    if size(gdv1,2) != size(gdv2,2) error("GDV sizes don't match") end
+    weights::Vector{Float64} = [1.0, 0.838444533, 0.838444533, 0.838444533, 0.743940642, 0.676889065, 0.743940642, 0.743940642, 0.676889065, 0.743940642, 0.676889065, 0.676889065, 0.676889065, 0.676889065, 0.743940642, 0.676889065, 0.582385175, 0.624879821, 0.676889065, 0.624879821, 0.582385175, 0.582385175, 0.676889065, 0.676889065, 0.676889065, 0.624879821, 0.546456463, 0.676889065, 0.582385175, 0.582385175, 0.546456463, 0.676889065, 0.582385175, 0.582385175, 0.582385175, 0.624879821, 0.582385175, 0.546456463, 0.546456463, 0.624879821, 0.546456463, 0.582385175, 0.546456463, 0.582385175, 0.624879821, 0.624879821, 0.582385175, 0.515333598, 0.546456463, 0.582385175, 0.582385175, 0.515333598, 0.582385175, 0.487881285, 0.624879821, 0.582385175, 0.676889065, 0.582385175, 0.582385175, 0.546456463, 0.515333598, 0.582385175, 0.582385175, 0.515333598, 0.546456463, 0.582385175, 0.546456463, 0.546456463, 0.515333598, 0.624879821, 0.582385175, 0.582385175, 0.676889065]
+    D = zeros(Float64,size(gdv1,1),size(gdv2,1))
+    for u = 1:size(gdv1,1), v = 1:size(gdv2,1), i = 1:size(gdv1,2)
+        D[u,v] += weights[i] * abs(log(gdv1[u,i]+1) - log(gdv2[v,i]+1)) /
+        log(max(gdv1[u,i],gdv2[v,i])+2)
+    end
+    D ./= sum(weights)
+    D .= 1 .- D
+    NodeSimMeasure(D)
+end
+
+
+"GDV similarity from the L-GRAAL paper"
+function NodeSimMeasure(::Val{:lgraalgdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
+    if size(gdv1,2) != size(gdv2,2) error("GDV sizes don't match") end
+    S = zeros(Float64,size(gdv1,1),size(gdv2,1))
+    for u = 1:size(gdv1,1), v = 1:size(gdv2,1), i = 1:size(gdv1,2)
+        a,b = minmax(gdv1[u,i], gdv2[v,i])
+        if b > 0
+            S[u,v] += a/b
+        end
+    end
+    S ./= size(gdv1,2)
+    NodeSimMeasure(S)
+end
+
+"The normalized GDV similarity from the H-GRAAL paper"
+function NodeSimMeasure(::Val{:hgraalgdvs}, G1::SparseMatrixCSC,G2::SparseMatrixCSC,
+                        gdv1::AbstractMatrix,gdv2::AbstractMatrix)
+    gm = GDVSmeasure(gdv1,gdv2)
+    deg1 = vec(sum(G1,1))
+    deg2 = vec(sum(G2,1))
+    maxdeg = maximum(deg1) + maximum(deg2)
+    S = gm.S
+    for u = 1:size(gm.S,1), v = 1:size(gm.S,2)
+        S[u,v] = alpha * S[u,v] + (1.0 - alpha) * (deg1[u]+deg2[v]) / maxdeg
+    end
+    NodeSimMeasure(S)
+end
+
+using Distances
+using MultivariateStats
+
+"The GDV similarity normalized using PCA from Yuriy's dynamic graphlets paper"
+function NodeSimMeasure(::Val{:pcagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
+    X = hcat(gdv1',gdv2') # switch to make columns feature vectors
+    
+    X = X[vec(var(X,2)) .>= 1e-8,:] # remove features w/ no variance
+    X .-= mean(X,2)
+    X ./= std(X,2) # standardize
+    res = fit(PCA,X; pratio=0.99, mean=0)
+    Y = sqrt.(res.prinvars + 1e-8) .\ res.proj' * X # project and whiten
+    
+    R = 1 - pairwise(CosineDist(), Y[:,1:size(gdv1,1)], Y[:,1+size(gdv1,1):end]) / 2
+    NodeSimMeasure(R)
+end
