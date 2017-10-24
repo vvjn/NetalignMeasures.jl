@@ -187,9 +187,11 @@ immutable DWECMeasure{T} <: NetalignMeasure
                             G2::SparseMatrixCSC,S::T) where {T}
         if size(G1,1) > size(G2,1) || size(S,1)!=size(G1,1) ||
              size(S,2)!=size(G2,1) error("Bad args") end
-        new(G1, G2, S, totalactivity(G1), totalactivity(G2))
+        new(G1, G2, S, networkactivity(G1), networkactivity(G2))
     end
 end
+DWECMeasure(G1::SparseMatrixCSC, G2::SparseMatrixCSC,S::T) where {T} =
+    DWECMeasure{T}(G1,G2,S)
 
 immutable DWECScore <: NetalignScore
     score :: Float64
@@ -210,6 +212,7 @@ function measure(m::DWECMeasure,f::Vector{Int})
 end
 
 dim(m::DWECMeasure,d::Int) = size(m.S,d)
+dim(m::DWECMeasure) = size(m.S,2)
 
 """
 Measure from NETAL paper

@@ -24,6 +24,8 @@ end
 Events() = Events(Vector{Tuple{Float64,Float64}}())
 zero(::Type{Events}) = Events()
 (==)(x::Events, y::Events) = x.timestamps == y.timestamps
+mergesorted(x::Events, y::Events) =
+    Events(mergesorted(x.timestamps,y.timestamps))
 
 """
     Total time during which events in event set are active
@@ -71,7 +73,7 @@ function snapshot(G::SparseMatrixCSC{Events},t_s::Real,t_e::Real)
         for j = nzrange(G,col)
             row = G.rowval[j]
             events = G.nzval[j]
-            Tc,Tn = conserved_duration(events,[(t_s,t_e)])
+            Tc,Tn = cet_ncet(events,[(t_s,t_e)])
             if Tc > 0
                 push!(I,row)
                 push!(J,col)

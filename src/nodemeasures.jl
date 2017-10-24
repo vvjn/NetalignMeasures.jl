@@ -14,7 +14,7 @@ immutable NodeSimMeasure{T<:AbstractMatrix} <: NetalignMeasure
         new(S)
     end
 end
-NodeSimMeasure(S) =  NodeSimMeasure{typeof(S)}(S)
+NodeSimMeasure(S::T) where {T<:AbstractMatrix} =  NodeSimMeasure{T}(S)
 
 immutable NodeSimScore <: NetalignScore
     score :: Float64
@@ -33,16 +33,21 @@ end
 dim(m::NodeSimMeasure,d::Int) = size(m.S,d)
 dim(m::NodeSimMeasure) = dim(m,2)
 
-NodeSimMeasure(sym, args...) =  NodeSimMeasure(Val{sym}(), args...)
+NodeSimMeasure(sym::Symbol, args...) =  NodeSimMeasure(Val{sym}(), args...)
 
 "GDV similarity, from the original paper"
-function NodeSimMeasure(::Val{:gdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
-    if size(gdv1,2) != size(gdv2,2) error("GDV sizes don't match") end
-    weights::Vector{Float64} = [1.0, 0.838444533, 0.838444533, 0.838444533, 0.743940642, 0.676889065, 0.743940642, 0.743940642, 0.676889065, 0.743940642, 0.676889065, 0.676889065, 0.676889065, 0.676889065, 0.743940642, 0.676889065, 0.582385175, 0.624879821, 0.676889065, 0.624879821, 0.582385175, 0.582385175, 0.676889065, 0.676889065, 0.676889065, 0.624879821, 0.546456463, 0.676889065, 0.582385175, 0.582385175, 0.546456463, 0.676889065, 0.582385175, 0.582385175, 0.582385175, 0.624879821, 0.582385175, 0.546456463, 0.546456463, 0.624879821, 0.546456463, 0.582385175, 0.546456463, 0.582385175, 0.624879821, 0.624879821, 0.582385175, 0.515333598, 0.546456463, 0.582385175, 0.582385175, 0.515333598, 0.582385175, 0.487881285, 0.624879821, 0.582385175, 0.676889065, 0.582385175, 0.582385175, 0.546456463, 0.515333598, 0.582385175, 0.582385175, 0.515333598, 0.546456463, 0.582385175, 0.546456463, 0.546456463, 0.515333598, 0.624879821, 0.582385175, 0.582385175, 0.676889065]
-    D = zeros(Float64,size(gdv1,1),size(gdv2,1))
-    for u = 1:size(gdv1,1), v = 1:size(gdv2,1), i = 1:size(gdv1,2)
-        D[u,v] += weights[i] * abs(log(gdv1[u,i]+1) - log(gdv2[v,i]+1)) /
-        log(max(gdv1[u,i],gdv2[v,i])+2)
+function NodeSimMeasure(::Val{:gdvs}, gdv1::AbstractMatrix{T},gdv2::AbstractMatrix{T}) where {T}
+    weights = T[1.0, 0.838444533, 0.838444533, 0.838444533, 0.743940642, 0.676889065, 0.743940642, 0.743940642, 0.676889065, 0.743940642, 0.676889065, 0.676889065, 0.676889065, 0.676889065, 0.743940642, 0.676889065, 0.582385175, 0.624879821, 0.676889065, 0.624879821, 0.582385175, 0.582385175, 0.676889065, 0.676889065, 0.676889065, 0.624879821, 0.546456463, 0.676889065, 0.582385175, 0.582385175, 0.546456463, 0.676889065, 0.582385175, 0.582385175, 0.582385175, 0.624879821, 0.582385175, 0.546456463, 0.546456463, 0.624879821, 0.546456463, 0.582385175, 0.546456463, 0.582385175, 0.624879821, 0.624879821, 0.582385175, 0.515333598, 0.546456463, 0.582385175, 0.582385175, 0.515333598, 0.582385175, 0.487881285, 0.624879821, 0.582385175, 0.676889065, 0.582385175, 0.582385175, 0.546456463, 0.515333598, 0.582385175, 0.582385175, 0.515333598, 0.546456463, 0.582385175, 0.546456463, 0.546456463, 0.515333598, 0.624879821, 0.582385175, 0.582385175, 0.676889065]
+    if size(gdv1,2) != size(gdv2,2) || size(gdv1,2) != length(weights) error("GDV sizes don't match") end
+    @inline kernel(oai,obi,tai,tbi,wi) = wi * abs(oai-obi) / max(tai,tbi)
+    D = zeros(T,size(gdv1,1),size(gdv2,1))
+    olog1 = log.(gdv1 .+ one(T))
+    tlog1 = log.(gdv1 .+ 2one(T));
+    olog2 = log.(gdv2 .+ one(T))
+    tlog2 = log.(gdv2 .+ 2one(T));    
+    D = zeros(T,size(gdv1,1),size(gdv2,1))
+    for i = 1:length(weights), v = 1:size(gdv2,1), u = 1:size(gdv1,1)
+        @inbounds D[u,v] += kernel(olog1[u,i], olog2[v,i], tlog1[u,i], tlog2[v,i], weights[i])
     end
     D ./= sum(weights)
     D .= 1 .- D
@@ -50,10 +55,10 @@ function NodeSimMeasure(::Val{:gdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
 end
 
 "GDV similarity from the L-GRAAL paper"
-function NodeSimMeasure(::Val{:lgraalgdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
+function NodeSimMeasure(::Val{:lgraalgdvs}, gdv1::AbstractMatrix{T},gdv2::AbstractMatrix{T}) where {T}
     if size(gdv1,2) != size(gdv2,2) error("GDV sizes don't match") end
-    S = zeros(Float64,size(gdv1,1),size(gdv2,1))
-    for u = 1:size(gdv1,1), v = 1:size(gdv2,1), i = 1:size(gdv1,2)
+    S = zeros(T,size(gdv1,1),size(gdv2,1))
+    @inbounds for i = 1:size(gdv1,2), v = 1:size(gdv2,1), u = 1:size(gdv1,1)
         a,b = minmax(gdv1[u,i], gdv2[v,i])
         S[u,v] += ifelse(b>0, a/b, 0.0)
     end
@@ -63,14 +68,14 @@ end
 
 "The normalized GDV similarity from the H-GRAAL paper"
 function NodeSimMeasure(::Val{:hgraalgdvs}, G1::SparseMatrixCSC,G2::SparseMatrixCSC,
-                        gdv1::AbstractMatrix,gdv2::AbstractMatrix,alpha::Real)
+                        gdv1::AbstractMatrix{T},gdv2::AbstractMatrix{T},alpha::T=0.5) where {T}
     gm = NodeSimMeasure(:gdvs, gdv1,gdv2)
-    deg1 = vec(sum(G1,1))
-    deg2 = vec(sum(G2,1))
+    deg1 = vec(full(sum(x->T(x),G1,1)))
+    deg2 = vec(full(sum(x->T(x),G2,1)))
     maxdeg = maximum(deg1) + maximum(deg2)
     S = gm.S
-    for u = 1:size(gm.S,1), v = 1:size(gm.S,2)
-        S[u,v] = alpha * S[u,v] + (1.0 - alpha) * (deg1[u]+deg2[v]) / maxdeg
+    @inbounds for v = 1:size(S,2), u = 1:size(S,1)
+        S[u,v] = alpha * S[u,v] + (one(T) - alpha) * (deg1[u]+deg2[v]) / maxdeg
     end
     gm
 end
@@ -87,7 +92,7 @@ function NodeSimMeasure(::Val{:pcagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatr
     NodeSimMeasure(R)
 end
 
-"Relative similarity between v1 and v2"
+"Relative similarity between v1 and v2: 1 - abs(a-b)/max(a,b)"
 function NodeSimMeasure(::Val{:relative}, v1::AbstractVector,v2::AbstractVector)
     m = length(v1)
     n = length(v2)
