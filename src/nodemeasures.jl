@@ -2,7 +2,6 @@ export NodeSimMeasure, NodeSimScore
 
 using MatrixNetworks
 using Distances
-using MultivariateStats
 
 """
 Node conservation measure
@@ -44,7 +43,7 @@ function NodeSimMeasure(::Val{:gdvs}, gdv1::AbstractMatrix{T},gdv2::AbstractMatr
     olog1 = log.(gdv1 .+ one(T))
     tlog1 = log.(gdv1 .+ 2one(T));
     olog2 = log.(gdv2 .+ one(T))
-    tlog2 = log.(gdv2 .+ 2one(T));    
+    tlog2 = log.(gdv2 .+ 2one(T));
     D = zeros(T,size(gdv1,1),size(gdv2,1))
     for i = 1:length(weights), v = 1:size(gdv2,1), u = 1:size(gdv1,1)
         @inbounds D[u,v] += kernel(olog1[u,i], olog2[v,i], tlog1[u,i], tlog2[v,i], weights[i])
@@ -80,14 +79,71 @@ function NodeSimMeasure(::Val{:hgraalgdvs}, G1::SparseMatrixCSC,G2::SparseMatrix
     gm
 end
 
+type PCA
+    mean::AbstractArray
+    proj::AbstractMatrix       # projection
+    prinvars::AbstractVector # variance of projX*projX' instead of cov(projX) like fit(PCA)
+end
+"""
+Input:
+X : m x n matrix
+Each column of X is a feature vector
+Get the first dimensions containing k fraction of variance
+
+Output:
+    PCA object
+    with mean, projection matrix, and variances
+    U is projection matrix
+    projection is T = U' * X
+    U*T =~ X, where X is mean centered
+"""
+function pca(X::AbstractMatrix,k::Real;mu=mean(X,2))
+    m,n = size(X)
+    if mu!=0
+        X = X .- vec(mu)
+    else
+        mu = zeros(0,0)
+    end
+    if m <= n # feature size is less than number of samples
+        C = X*X'
+        res = eigfact!(C)
+        d = res.values
+        U = res.vectors
+        ix = sortperm(d,rev=true)
+        d = d[ix]
+        clamp!(d, 0.0, Inf)
+    else
+        C = X'*X
+        res = eigfact!(C)
+        d = res.values
+        V = res.vectors
+        ix = sortperm(d,rev=true)
+        d = d[ix]
+        clamp!(d, 0.0, Inf)
+    end
+    if !(0.0 <= k <= 1.0) error("k needs to be between 0 and 1") end
+    k = findfirst(cumsum(d)./sum(d) .>= k)
+    d = d[1:k]
+    ix = ix[1:k]
+    if m <= n
+        U = U[:,ix]
+    else
+        V = V[:,ix]
+        U = X*V # convert evecs from X'*X to X*X'. the evals are the same.
+        s = sqrt.(d)
+        U = U ./ s'
+    end
+    PCA(mu, U, d)
+end
+
 "The GDV similarity normalized using PCA from Yuriy's dynamic graphlets paper"
 function NodeSimMeasure(::Val{:pcagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
-    X = hcat(gdv1',gdv2') # switch to make columns feature vectors    
-    X = X[vec(var(X,2)) .>= 1e-8,:] # remove features w/ no variance
+    X = hcat(gdv1',gdv2') # switch to make columns feature vectors
+    X = X[vec(var(X,2)) .>= 1e-5,:] # remove features w/ no variance
     X .-= mean(X,2)
     X ./= std(X,2) # standardize
-    res = fit(PCA,X; pratio=0.99, mean=0)
-    Y = sqrt.(res.prinvars + 1e-8) .\ res.proj' * X # project and whiten    
+    res = pca(X,0.99,mu=0) #fit(PCA,X; pratio=0.99, mean=0)
+    Y = sqrt.(res.prinvars + 1e-5) .\ res.proj' * X # project and whiten
     R = 1 .- pairwise(CosineDist(), Y[:,1:size(gdv1,1)], Y[:,size(gdv1,1)+1:end]) ./ 2
     NodeSimMeasure(R)
 end
@@ -137,18 +193,20 @@ function NodeSimMeasure(::Val{:migraal}, Xs::AbstractMatrix...)
     NodeSimMeasure(C)
 end
 
-"Transforms blast e-values to nodes similarities"
+"""Transforms blast e-values to nodes similarities.
+# Arguments
+- `clamp = 1e-101` : Clamp E-values to a minimum of `clamp`."""
 function NodeSimMeasure(::Val{:evalues}, E::AbstractMatrix, clamp=1e-101)
     # -log(e-value) transform
     B = -log.(E)
-    # If -log(E-value) above -log(clampval), ie if E-value below clampval,
-    # then clamp it
+    # Clamp E-value to a minimum of `clamp`
+    # That is, clamp -log(E-value) to max of -log(clampval)
     # Otherwise we get issues with -log(E-value) being Inf or some
     # ridiculously huge number
-    clamp!(B, 0, -log(clampval))
+    clamp!(B, 0.0, -log(clamp))
     # Normalize by dividing by maximum value
     B ./= maximum(B)
-    NodeSimMeasure(B)    
+    NodeSimMeasure(B)
 end
 
 "Transforms blast e-values to node similarities"
@@ -157,8 +215,22 @@ function NodeSimMeasure(::Val{:evalues}, E::SparseMatrixCSC, clamp=1e-101)
     # Assume structural sparsity, ie if B[i,j] is not in the structural non-zeros
     # of B, then there is no given E-value between i and j
     # But if B[i,j] is, then take the -log(E-value) and clamp the result
-    @. B.nzval = -log(B.nzval) 
-    clamp!(B.nzval, 0, -log(clampval))
+    @. B.nzval = -log(B.nzval)
+    clamp!(B.nzval, 0.0, -log(clamp))
     B.nzval ./= maximum(B.nzval)
     NodeSimMeasure(B)
+end
+
+"GHOST node similiarity"
+function NodeSimMeasure(::Val{:ghost}, G1::SparseMatrixCSC,
+                        G2::SparseMatrixCSC,k::Integer=4;verbose=true)
+    m = size(G1,1)
+    n = size(G2,1)
+    gmeas = GhostMeasure(G1,G2,k,verbose=verbose)
+    verbose && println("Calculating GHOST node similarities")
+    R = zeros(Float64,m,n)
+    for v = 1:n, u = 1:m
+        R[u,v] = score(meas,u,v)
+    end
+    NodeSimMeasure(R)
 end

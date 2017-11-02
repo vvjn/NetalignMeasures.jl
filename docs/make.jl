@@ -1,18 +1,17 @@
 using Documenter, NetalignMeasures
 
-makedocs()
+makedocs(
+           format = :html,
+           sitename = "NetalignMeasures",
+           pages = [
+                    "index.md"
+           ]
+       )
 
 deploydocs(
-           deps   = Deps.pip("mkdocs", "python-markdown-math"),           
            repo = "github.com/vvjn/NetalignMeasures.jl.git",
+           target = "build",
+           deps   = nothing,
+           make   = nothing,
            julia = "0.6"
 )
-
-# makedocs(
-#     format = :html,
-#     sitename = "NetalignUtils",
-#     pages = [
-#         "index.md"
-#     ]
-# )
-
