@@ -1,8 +1,5 @@
 export NodeSimMeasure, NodeSimScore
 
-using MatrixNetworks
-using Distances
-
 """
 Node conservation measure
 """

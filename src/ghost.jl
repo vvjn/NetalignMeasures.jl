@@ -1,8 +1,3 @@
-using MatrixNetworks
-using StatsBase
-using Distances
-using Distributions
-
 export ghost
 
 # GHOST's node similarity
@@ -50,7 +45,7 @@ function ghost_signature(G::SparseMatrixCSC,k::Integer,u,n=50,mode=:bins)
             hx[length(bins):end] = 0.0
             filt!(hx, p, 1, hx) #conv(p,cx)
         end
-            
+
         nx = norm(hx,1)
         nx==0 ? hx : hx./nx
     end

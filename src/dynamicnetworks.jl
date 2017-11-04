@@ -1,5 +1,6 @@
 export Events, networkactivity, nodeactivity, cet_ncet, fixevents,
-fixevents!, widenevents!, snapshot, snapshots, mintime, maxtime
+fixevents!, widenevents!, snapshot, snapshots, mintime, maxtime,
+meannodeactivity
 
 # Functions for working with dynamic networks
 import Base: zero, ==
@@ -17,7 +18,7 @@ s.t. intersect([t0,t1],[s0,s1]) != null
 A dynamic network can be represented using a
 SparseMatrixCSC{Events} structure where an element in the
 matrix (i.e. an edge) is represented using the following structure
-"""    
+"""
 immutable Events
     timestamps:: Vector{Tuple{Float64,Float64}}
 end
@@ -30,9 +31,10 @@ mergesorted(x::Events, y::Events) =
 """
     Total time during which events in event set are active
     i.e. active duration of an edge
-"""    
+"""
 nodeactivity(evs::Events) = sum(x -> x[2]-x[1], evs.timestamps)
 
+meannodeactivity(G::SparseMatrixCSC{Events}) = mean(map(nodeactivity, G.nzval))
 """
 Input: adj. matrix of a dynamic network
 Output: adj. matrix of static network containing corresponding
@@ -64,7 +66,7 @@ end
 
 """
     If event intersects with [t_s,t_e] then add edges to snapshot
-"""        
+"""
 function snapshot(G::SparseMatrixCSC{Events},t_s::Real,t_e::Real)
     m,n = size(G)
     I = Int[]
@@ -84,7 +86,7 @@ function snapshot(G::SparseMatrixCSC{Events},t_s::Real,t_e::Real)
 end
 
 """ Convert to snapshots with window size t_w
-"""    
+"""
 function snapshots(G::SparseMatrixCSC{Events},t_w::Real,
                    t_min::Real=-Inf,t_max::Real=Inf)
     if isinf(t_min)
@@ -99,7 +101,7 @@ end
 """
 Make each event in network wider by adding making each event
 occur `pre` time ahead and `post` time later
-"""    
+"""
 function widenevents!(G::SparseMatrixCSC{Events},pre=0.5,post=0.5)
     m,n = size(G)
     for i = 1:n

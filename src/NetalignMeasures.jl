@@ -2,6 +2,12 @@ __precompile__()
 
 module NetalignMeasures
 
+using MatrixNetworks
+using Distances
+using StatsBase
+using Distributions
+import Distributions: dim
+
 export NetalignMeasure, NetalignScore, measure, score, dim
 
 """
