@@ -1,6 +1,6 @@
 export Events, networkactivity, nodeactivity, cet_ncet, fixevents,
 fixevents!, widenevents!, snapshot, snapshots, mintime, maxtime,
-meannodeactivity
+meannodeactivity, numevents, mergeevents, mergeevents!
 
 # Functions for working with dynamic networks
 import Base: zero, ==
@@ -27,6 +27,9 @@ zero(::Type{Events}) = Events()
 (==)(x::Events, y::Events) = x.timestamps == y.timestamps
 mergesorted(x::Events, y::Events) =
     Events(mergesorted(x.timestamps,y.timestamps))
+
+numevents(G::SparseMatrixCSC{Events}) =
+    sum(map(x->length(x.timestamps), G.nzval))
 
 """
     Total time during which events in event set are active
@@ -142,6 +145,7 @@ function fixevents(tis::Vector)
     push!(tout,(a,b))
     tout
 end
+mergeevents(x) = fixevents(x)
 
 """
 Given a vector of timestamps (sorted wrt the start time),
@@ -171,6 +175,7 @@ function fixevents!(tis::Vector)
     tis[j] = (a,b)
     resize!(tis,j)
 end
+mergeevents!(x) = fixevents!(x)
 
 """
 Given two vectors of timestamps (sorted wrt the start time),
@@ -181,6 +186,7 @@ fixevents(x::Events, y::Events) =
     Events(fixevents(x.timestamps, y.timestamps))
 fixevents(tis1::Vector, tis2::Vector) =
     fixevents!(mergesorted(tis1,tis2))
+mergeevents(x,y) = fixevents(x,y)
 
 """
 Calculates CET and NCET of the first `n` elements in a sorted array of events

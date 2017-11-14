@@ -133,7 +133,7 @@ function pca(X::AbstractMatrix,k::Real;mu=mean(X,2))
     PCA(mu, U, d)
 end
 
-"The GDV similarity normalized using PCA from Yuriy's dynamic graphlets paper"
+"The GDV similarity calculated using PCA from Yuriy's dynamic graphlets paper"
 function NodeSimMeasure(::Val{:pcagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
     X = hcat(gdv1',gdv2') # switch to make columns feature vectors
     X = X[vec(var(X,2)) .>= 1e-5,:] # remove features w/ no variance
@@ -142,6 +142,15 @@ function NodeSimMeasure(::Val{:pcagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatr
     res = pca(X,0.99,mu=0) #fit(PCA,X; pratio=0.99, mean=0)
     Y = sqrt.(res.prinvars + 1e-5) .\ res.proj' * X # project and whiten
     R = 1 .- pairwise(CosineDist(), Y[:,1:size(gdv1,1)], Y[:,size(gdv1,1)+1:end]) ./ 2
+    NodeSimMeasure(R)
+end
+
+"The GDV similarity calculated using CCA"
+function NodeSimMeasure(::Val{:ccagdvs}, gdv1::AbstractMatrix,gdv2::AbstractMatrix)
+    X = gdv1'
+    Y = gdv2'
+    res = fit(CCA,X,Y)
+    R = 1 .- pairwise(CosineDist(), xtransform(res,X), ytransform(res,Y)) ./ 2
     NodeSimMeasure(R)
 end
 

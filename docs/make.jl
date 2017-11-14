@@ -5,7 +5,8 @@ makedocs(
            sitename = "NetalignMeasures",
            pages = [
                     "index.md"
-           ]
+           ],
+    modules = [NetalignMeasures]
        )
 
 deploydocs(
