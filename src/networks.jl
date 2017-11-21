@@ -40,5 +40,5 @@ function expci(G1::SparseMatrixCSC,G2::SparseMatrixCSC,
                expci2=expci(G2,dependency(G2,deg2));
                normalize=true)
     z = normalize ? max(maximum(deg1),maximum(deg2)) : 1
-    min.(expci1/z, (expci2/z)')
+    min.(expci1./z, (expci2./z)')
 end

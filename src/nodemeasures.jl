@@ -240,3 +240,8 @@ function NodeSimMeasure(::Val{:ghost}, G1::SparseMatrixCSC,
     end
     NodeSimMeasure(R)
 end
+
+# interaction matrix = min(G1.expci[i],G2.expci[j])/max(G1.maxdeg,G2.maxdeg)
+function NodeSimMeasure(::Val{:interactionscore}, G1::SparseMatrixCSC,G2::SparseMatrixCSC)
+    NodeSimMeasure(expci(G1,G2))
+end
