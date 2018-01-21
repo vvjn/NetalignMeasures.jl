@@ -5,6 +5,7 @@
 Network alignment measures including S3, DS3, WEC, DWEC, as well as
 node similarities for
 network alignment including GDV similarity, degree similarity, etc.
+Also includes types for dynamic networks and functions for alignments
 
 ## Installation
 
