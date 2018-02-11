@@ -1,6 +1,6 @@
 export Events, networkactivity, nodeactivity, cet_ncet, fixevents,
 fixevents!, widenevents!, snapshot, snapshots, mintime, maxtime,
-meannodeactivity, numevents, mergeevents, mergeevents!
+meannodeactivity, numevents, mergeevents, mergeevents!, flatten
 
 # Functions for working with dynamic networks
 import Base: zero, ==
@@ -30,6 +30,10 @@ mergesorted(x::Events, y::Events) =
 
 numevents(G::SparseMatrixCSC{Events}) =
     sum(map(x->length(x.timestamps), G.nzval))
+
+flatten(G::SparseMatrixCSC{<:Number,Int}) = G
+flatten(G::SparseMatrixCSC{Events,Int}) =
+    SparseMatrixCSC(G.m,G.n,G.colptr,G.rowval,ones(Int,length(G.nzval)))
 
 """
     Total time during which events in event set are active

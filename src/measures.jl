@@ -279,9 +279,6 @@ immutable LCCSMeasure <: NetalignMeasure
     G
     function LCCSMeasure(G::SparseMatrixCSC...)
         if length(G) < 2 error("Need 2 of more networks") end
-        for i = 2:length(G)
-            if size(G[i-1],1) > size(G[i],1) error("Network size order") end
-        end
         new(G)
     end
 end
@@ -316,6 +313,9 @@ end
 # Only works for 1-1 MNA
 # fs[i] is permutation from G[i] to G[end]
 function measure(meas::LCCSMeasure,fs::Tuple{Vector{<:Integer}})
+    for i = 2:length(meas.G)
+        if size(meas.G[i-1],1) > size(meas.G[i],1) error("Network size order") end
+    end
     k = length(meas.G)
     length(fs) == k-1 || error("number of permutations")
     ncs = size(meas.G[end],1)
@@ -354,9 +354,6 @@ immutable CIQMeasure <: NetalignMeasure
     G
     function CIQMeasure(G::SparseMatrixCSC...)
         if length(G) < 2 error("Need 2 of more networks") end
-        for i = 2:length(G)
-            if size(G[i-1],1) > size(G[i],1) error("Network size order") end
-        end
         new(G)
     end
 end
@@ -368,6 +365,10 @@ end
 # Only works for 1-1 MNA
 # fs[i] is permutation from G[i] to G[end]
 function measure(meas::CIQMeasure,fs::Tuple{Vector{<:Integer}})
+    for i = 2:length(meas.G)
+        if size(meas.G[i-1],1) > size(meas.G[i],1) error("Network size order") end
+    end
+    
     k = length(meas.G)
     length(fs) == k-1 || error("number of permutations")
     ncs = size(meas.G[end],1)
